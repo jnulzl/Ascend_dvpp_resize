@@ -17,6 +17,7 @@
 #ifndef _PICTURE_INC_DVPP_RESIZE_H
 #define _PICTURE_INC_DVPP_RESIZE_H
 
+#include <vector>
 #include <cstdint>
 #include "acl/acl.h"
 #include "acl/ops/acl_dvpp.h"
@@ -45,7 +46,7 @@ public:
     * @brief Constructor
     * @param [in] stream: stream
     */
-    DvppResize(aclrtStream &stream, uint32_t resized_width, uint32_t resized_height);
+    DvppResize(aclrtStream &stream, uint32_t batch_size, uint32_t resized_width, uint32_t resized_height);
 
     /**
     * @brief Destructor
@@ -56,32 +57,38 @@ public:
     * @brief dvpp process
     * @return result
     */
-    int Process(ImageData& resizedImage, ImageData& srcImage);
+    int Process(ImageData* srcImage, int img_num);
+
+    int Get(ImageData& resizedImage, int index);
 
     void DestroyResource();
 
 private:
-    int InitResizeInputDesc(ImageData& inputImage);
+    int InitResizeInputDesc(ImageData& inputImage, int index);
 
     int InitResizeOutputDesc();
 
 private:
-    uint32_t src_width_;
-    uint32_t src_height_;
+    std::vector<uint32_t> src_widths_;
+    std::vector<uint32_t> src_heights_;
 
     aclrtStream stream_;
     acldvppChannelDesc *g_dvppChannelDesc_;
     acldvppResizeConfig *g_resizeConfig_;
 
-    acldvppPicDesc *g_vpcInputDesc_; // vpc input desc
-    acldvppPicDesc *g_vpcOutputDesc_; // vpc output desc
+    acldvppBatchPicDesc *g_vpcBatchInputDesc_; // vpc input desc
+    acldvppBatchPicDesc *g_vpcBatchOutputDesc_; // vpc output desc
 
-    void *g_vpcOutBufferDev_; // vpc output buffer
+    std::vector<void *> g_vpcBatchOutBufferDev_;  // input pic dev buffer
     uint32_t g_vpcOutBufferSize_;  // vpc output size
 
     uint32_t g_resizeWidth_;
     uint32_t g_resizeHeight_;
     acldvppPixelFormat g_format_;
+
+    int  g_batch_size_;
+    std::vector<uint32_t> g_roiNums_;
+    std::vector<acldvppRoiConfig*> g_cropArea_;
 };
 
 #endif // _PICTURE_INC_DVPP_RESIZE_H
