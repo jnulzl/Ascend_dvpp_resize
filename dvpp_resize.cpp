@@ -17,13 +17,18 @@
 #include <iostream>
 #include "acl/acl.h"
 #include "dvpp_resize.h"
-#include "common/alg_define.h"
+#include "alg_define.h"
 
-DvppResize::DvppResize(aclrtStream &stream, uint32_t batch_size,
-                       uint32_t resized_width, uint32_t resized_height)
-        : stream_(stream), g_dvppChannelDesc_(nullptr),
+DvppResize::DvppResize()
+        : stream_(nullptr), g_dvppChannelDesc_(nullptr),
           g_resizeConfig_(nullptr), g_vpcBatchInputDesc_(nullptr), g_vpcBatchOutputDesc_(nullptr),
           g_vpcOutBufferSize_(0)
+{
+
+}
+
+void DvppResize::Init(aclrtStream &stream, uint32_t batch_size,
+                      uint32_t resized_width, uint32_t resized_height)
 {
     g_dvppChannelDesc_ = acldvppCreateChannelDesc();
     if (!g_dvppChannelDesc_)
@@ -59,7 +64,6 @@ DvppResize::DvppResize(aclrtStream &stream, uint32_t batch_size,
     g_format_ = static_cast<acldvppPixelFormat>(PIXEL_FORMAT_BGR_888);
 
     g_batch_size_ = batch_size;
-    g_vpcBatchOutBufferDev_.resize(g_batch_size_);
     g_vpcBatchInputDesc_ = acldvppCreateBatchPicDesc(g_batch_size_);
     if (!g_vpcBatchInputDesc_)
     {
@@ -67,6 +71,7 @@ DvppResize::DvppResize(aclrtStream &stream, uint32_t batch_size,
         return;
     }
 
+    g_vpcBatchOutBufferDev_ = nullptr;
     if (1 != InitResizeOutputDesc())
     {
         AIALG_ERROR("InitResizeOutputDesc failed\n");
@@ -76,7 +81,8 @@ DvppResize::DvppResize(aclrtStream &stream, uint32_t batch_size,
     src_widths_.resize(g_batch_size_, 0);
     src_heights_.resize(g_batch_size_, 0);
     g_roiNums_.resize(g_batch_size_, 1);
-    g_cropArea_.resize(g_batch_size_);
+    g_cropArea_.resize(g_batch_size_, nullptr);
+    g_pasteArea_.resize(g_batch_size_,nullptr);
     AIALG_PRINT("Init success\n");
 }
 
@@ -97,12 +103,22 @@ void DvppResize::DestroyResource()
         acldvppDestroyBatchPicDesc(g_vpcBatchOutputDesc_);
         g_vpcBatchOutputDesc_ = nullptr;
     }
+    if (g_vpcBatchOutBufferDev_)
+    {
+        acldvppFree(g_vpcBatchOutBufferDev_);
+        g_vpcBatchOutBufferDev_ = nullptr;
+    }
     for (int idx = 0; idx < g_batch_size_; ++idx)
     {
-        if (g_vpcBatchOutBufferDev_[idx])
+        if (!g_cropArea_.empty() && g_cropArea_[idx])
         {
-            acldvppFree(g_vpcBatchOutBufferDev_[idx]);
-            g_vpcBatchOutBufferDev_[idx] = nullptr;
+            acldvppDestroyRoiConfig(g_cropArea_[idx]);
+            g_cropArea_[idx] = nullptr;
+        }
+        if (!g_pasteArea_.empty() && g_pasteArea_[idx])
+        {
+            acldvppDestroyRoiConfig(g_pasteArea_[idx]);
+            g_pasteArea_[idx] = nullptr;
         }
     }
 
@@ -126,6 +142,7 @@ void DvppResize::DestroyResource()
         g_dvppChannelDesc_ = nullptr;
     }
 }
+
 int DvppResize::InitResizeInputDesc(ImageData &inputImage, int index)
 {
     // if the input yuv is from JPEGD, 128*16 alignment on 310, 64*16 alignment on 310P
@@ -175,16 +192,16 @@ int DvppResize::InitResizeOutputDesc()
 
     g_vpcOutBufferSize_ = resizeOutWidthStride * resizeOutHeightStride;//YUV420SP_SIZE(resizeOutWidthStride, resizeOutHeightStride);
 
-    for (int idx = 0; idx < g_batch_size_; ++idx)
+    aclError aclRet = acldvppMalloc(&g_vpcBatchOutBufferDev_, g_batch_size_ * g_vpcOutBufferSize_);
+    if (aclRet != ACL_SUCCESS)
     {
-        aclError aclRet = acldvppMalloc(&g_vpcBatchOutBufferDev_[idx], g_vpcOutBufferSize_);
-        if (aclRet != ACL_SUCCESS)
-        {
-            AIALG_ERROR("acldvppMalloc g_vpcOutBufferDev_ failed, aclRet = %d\n", aclRet);
-            return 0;
-        }
-        acldvppPicDesc *vpcOutputDesc = acldvppGetPicDesc(g_vpcBatchOutputDesc_, idx);
-        acldvppSetPicDescData(vpcOutputDesc, g_vpcBatchOutBufferDev_[idx]);
+        AIALG_ERROR("acldvppMalloc g_vpcOutBufferDev_ failed, aclRet = %d\n", aclRet);
+        return 0;
+    }
+    for (int bs = 0; bs < g_batch_size_; ++bs)
+    {
+        acldvppPicDesc *vpcOutputDesc = acldvppGetPicDesc(g_vpcBatchOutputDesc_, bs);
+        acldvppSetPicDescData(vpcOutputDesc, reinterpret_cast<uint8_t*>(g_vpcBatchOutBufferDev_) + bs * g_vpcOutBufferSize_);
         acldvppSetPicDescFormat(vpcOutputDesc, g_format_);
         acldvppSetPicDescWidth(vpcOutputDesc, resizeOutWidth);
         acldvppSetPicDescHeight(vpcOutputDesc, resizeOutHeight);
@@ -211,19 +228,41 @@ int DvppResize::Process(ImageData* srcImage, int img_num)
         {
             src_widths_[idx] = srcImage[idx].width;
             src_heights_[idx] = srcImage[idx].height;
-            g_cropArea_[idx] = acldvppCreateRoiConfig(0, src_widths_[idx] - 1,
-                                                      0, src_heights_[idx] - 1);
+
+            if (!g_cropArea_.empty() && g_cropArea_[idx])
+            {
+                acldvppDestroyRoiConfig(g_cropArea_[idx]);
+                g_cropArea_[idx] = nullptr;
+            }
+            g_cropArea_[idx] = acldvppCreateRoiConfig(0, src_widths_[idx] % 2 ? src_widths_[idx] - 2 : src_widths_[idx] - 1,
+                                                      0, src_heights_[idx] % 2 ? src_heights_[idx] - 2 : src_heights_[idx] - 1);
             if (!g_cropArea_[idx])
             {
                 AIALG_ERROR("acldvppCreateRoiConfig cropArea_ failed");
                 return 0;
             }
             InitResizeInputDesc(srcImage[idx], idx);
+
+            float r = 1.0f * std::max(g_resizeHeight_, g_resizeWidth_) / std::max(src_heights_[idx], src_widths_[idx]);
+            int net_input_new_width = static_cast<int>(src_widths_[idx] * r);
+            int net_input_new_height = static_cast<int>(src_heights_[idx] * r);
+            if (!g_pasteArea_.empty() && g_pasteArea_[idx])
+            {
+                acldvppDestroyRoiConfig(g_pasteArea_[idx]);
+                g_pasteArea_[idx] = nullptr;
+            }
+            g_pasteArea_[idx] = acldvppCreateRoiConfig(0, net_input_new_width % 2 ?net_input_new_width - 2 : net_input_new_width - 1,
+                                                      0, net_input_new_height % 2 ? net_input_new_height - 2 : net_input_new_height - 1);
+            if (!g_pasteArea_[idx])
+            {
+                AIALG_ERROR("acldvppCreateRoiConfig g_pasteArea_ failed");
+                return 0;
+            }
         }
     }
-    aclError aclRet = acldvppVpcBatchCropResizeAsync(g_dvppChannelDesc_, g_vpcBatchInputDesc_,
+    aclError aclRet = acldvppVpcBatchCropResizePasteAsync(g_dvppChannelDesc_, g_vpcBatchInputDesc_,
                                                      g_roiNums_.data(), g_batch_size_,
-                                                     g_vpcBatchOutputDesc_, g_cropArea_.data(),
+                                                     g_vpcBatchOutputDesc_, g_cropArea_.data(), g_pasteArea_.data(),
                                                      g_resizeConfig_, stream_);
     if (aclRet != ACL_SUCCESS)
     {
@@ -240,13 +279,18 @@ int DvppResize::Process(ImageData* srcImage, int img_num)
     return 1;
 }
 
-int DvppResize::Get(ImageData &resizedImage, int index)
+int DvppResize::Get(ImageData &resizedImage, int index) const
 {
     resizedImage.width = g_resizeWidth_;
     resizedImage.height = g_resizeHeight_;
     resizedImage.alignWidth = ALIGN_UP16(g_resizeWidth_) * 3;
     resizedImage.alignHeight = ALIGN_UP2(g_resizeHeight_);
     resizedImage.size = g_vpcOutBufferSize_;
-    resizedImage.data = reinterpret_cast<uint8_t *>(g_vpcBatchOutBufferDev_[index]);
+    resizedImage.data = reinterpret_cast<uint8_t*>(g_vpcBatchOutBufferDev_) + index * g_vpcOutBufferSize_;
     return 1;
+}
+
+const uint8_t* DvppResize::GetOutputDevicePtr() const
+{
+    return static_cast<const uint8_t*>(g_vpcBatchOutBufferDev_);
 }

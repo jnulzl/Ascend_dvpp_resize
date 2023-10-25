@@ -64,7 +64,9 @@ int main(int argc, const char *argv[])
     int des_width = std::atoi(argv[3]);
     int des_height = std::atoi(argv[4]);
 
-    DvppResize dvppResize(stream, batch_size, des_width, des_height);
+    DvppResize dvppResize;
+    dvppResize.Init(stream, batch_size, des_width, des_height);
+
     std::vector<void*> src_buffers(batch_size);
     std::vector<ImageData> src_imgs(batch_size);
     uint32_t num_loop = std::atoi(argv[5]);
@@ -82,9 +84,7 @@ int main(int argc, const char *argv[])
         src_imgs[idx].alignWidth = ALIGN_UP16(img.cols) * 3; // 1920
         src_imgs[idx].alignHeight = ALIGN_UP2(img.rows); // 1080
         src_imgs[idx].size = src_imgs[idx].alignWidth * src_imgs[idx].alignHeight;//YUV420SP_SIZE(src_img.alignWidth, src_img.alignHeight);
-//        std::printf("img.width = %d, img.height = %d\n", img.cols, img.rows);
-//        std::printf("img.alignWidth = %d, img.alignHeight = %d\n", src_imgs[idx].alignWidth, src_imgs[idx].alignHeight);
-//        std::printf("img.size = %u\n", src_imgs[idx].size);
+        size_t src_img_byte_size = img.cols * img.rows * 3;
 
         aclError aclRet = acldvppMalloc(&src_buffers[idx], src_imgs[idx].size);
         if (aclRet != ACL_SUCCESS)
@@ -93,7 +93,7 @@ int main(int argc, const char *argv[])
             return -1;
         }
 
-        aclRet = aclrtMemcpy(src_buffers[idx], src_imgs[idx].size, img.data, src_imgs[idx].size, ACL_MEMCPY_HOST_TO_DEVICE);
+        aclRet = aclrtMemcpy(src_buffers[idx], src_imgs[idx].size, img.data, src_img_byte_size, ACL_MEMCPY_HOST_TO_DEVICE);
         if (aclRet != ACL_SUCCESS)
         {
             std::printf("Copy data to device failed, aclRet is %d\n", aclRet);
@@ -116,19 +116,17 @@ int main(int argc, const char *argv[])
     {
         ImageData des_img;
         dvppResize.Get(des_img, idx);
-//        std::printf("des_width = %d, des_height = %d\n", des_img.width, des_img.height);
-//        std::printf("des_aligned_width = %d, des_aligned_height = %d\n", des_img.alignWidth, des_img.alignHeight);
-//        std::printf("des_size = %d\n", des_img.size);
 
         // alloc device memory && copy data from device to host
-        cv::Mat des_mat(des_img.height, des_img.width, CV_8UC3);
-        aclError aclRet = aclrtMemcpy(des_mat.data, des_img.size, des_img.data, des_img.size, ACL_MEMCPY_DEVICE_TO_HOST);
+        std::vector<uint8_t> out_data(des_img.size);
+        aclError aclRet = aclrtMemcpy(out_data.data(), des_img.size, des_img.data, des_img.size, ACL_MEMCPY_DEVICE_TO_HOST);
         if (aclRet != ACL_SUCCESS)
         {
             std::printf("Copy data to host failed, aclRet is %d\n", aclRet);
             return -1;
         }
 
+        cv::Mat des_mat(des_img.height, des_img.width, CV_8UC3, out_data.data(), des_img.alignWidth);
         cv::imwrite("./res/dvpp_resize_output" + std::to_string(idx) + ".jpg", des_mat);
     }
 

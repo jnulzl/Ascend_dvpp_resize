@@ -46,7 +46,9 @@ public:
     * @brief Constructor
     * @param [in] stream: stream
     */
-    DvppResize(aclrtStream &stream, uint32_t batch_size, uint32_t resized_width, uint32_t resized_height);
+    DvppResize();
+
+    void Init(aclrtStream &stream, uint32_t batch_size, uint32_t resized_width, uint32_t resized_height);
 
     /**
     * @brief Destructor
@@ -59,7 +61,9 @@ public:
     */
     int Process(ImageData* srcImage, int img_num);
 
-    int Get(ImageData& resizedImage, int index);
+    int Get(ImageData& resizedImage, int index) const;
+
+    const uint8_t* GetOutputDevicePtr() const;
 
     void DestroyResource();
 
@@ -79,7 +83,7 @@ private:
     acldvppBatchPicDesc *g_vpcBatchInputDesc_; // vpc input desc
     acldvppBatchPicDesc *g_vpcBatchOutputDesc_; // vpc output desc
 
-    std::vector<void *> g_vpcBatchOutBufferDev_;  // input pic dev buffer
+    void* g_vpcBatchOutBufferDev_;  // input pic dev buffer
     uint32_t g_vpcOutBufferSize_;  // vpc output size
 
     uint32_t g_resizeWidth_;
@@ -89,6 +93,7 @@ private:
     int  g_batch_size_;
     std::vector<uint32_t> g_roiNums_;
     std::vector<acldvppRoiConfig*> g_cropArea_;
+    std::vector<acldvppRoiConfig*> g_pasteArea_;
 };
 
 #endif // _PICTURE_INC_DVPP_RESIZE_H
