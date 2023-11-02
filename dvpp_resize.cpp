@@ -251,8 +251,26 @@ int DvppResize::Process(ImageData* srcImage, int img_num)
                 acldvppDestroyRoiConfig(g_pasteArea_[idx]);
                 g_pasteArea_[idx] = nullptr;
             }
-            g_pasteArea_[idx] = acldvppCreateRoiConfig(0, net_input_new_width % 2 ?net_input_new_width - 2 : net_input_new_width - 1,
-                                                      0, net_input_new_height % 2 ? net_input_new_height - 2 : net_input_new_height - 1);
+
+            // left offset must aligned to 16
+            int x;
+            x = 0;
+            // x = (g_resizeWidth_ - net_input_new_width) / 2; // 左右对称补0
+            x = x < 0 ? 0 : x;
+            x = ALIGN_UP16(x);
+            int x_max = x + net_input_new_width;
+            x_max = x_max >  g_resizeWidth_ ? g_resizeWidth_ - 1 : x_max;
+            x_max = x_max % 2 ? x_max : x_max - 1;
+
+            int y;
+            y = 0;
+            // y = (g_resizeHeight_ - net_input_new_height) / 2; //上下对称补0
+            y = y % 2 ? y - 1 : y - 2;
+            y = y < 0 ? 0 : y;
+            int y_max = y + net_input_new_height;
+            y_max = y_max % 2 ? y_max : y_max - 1;
+            g_pasteArea_[idx] = acldvppCreateRoiConfig(x, x_max,
+                                                       y, y_max);
             if (!g_pasteArea_[idx])
             {
                 AIALG_ERROR("acldvppCreateRoiConfig g_pasteArea_ failed");
