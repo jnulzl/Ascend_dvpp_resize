@@ -28,12 +28,12 @@ make VERBOSE=1 -j4
 
 - 缩放前
 
-  ![dog](D:\codes\Ascend\Deploy\dvpp_resize\imgs\dog.jpg)
+  ![dog](imgs/dog.jpg)
 
 
 - 缩放后
 
-  ![dvpp_resize_output0](D:\codes\Ascend\Deploy\dvpp_resize\imgs\dvpp_resize_output0.jpg)
+  ![dvpp_resize_output0](imgs/dvpp_resize_output0.jpg)
 
 
 ## 说明及注意事项
