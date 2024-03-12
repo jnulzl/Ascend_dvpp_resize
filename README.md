@@ -21,10 +21,10 @@ mkdir build
 cmake ../ # .... 查看CMakeLists.txt根据实际情况修改
 make VERBOSE=1 -j4
 ./dvpp_resize                                   
-	Usage: ./main img_list_file batch_size des_width des_height num_loop
+	Usage: ./main img_list_file(jpg、png...) batch_size des_width des_height num_loop yuv420sp_nv12_resize(0/1) fix_scale
 ```
 
-本仓库实现了BGR图形的等比例缩放，如下所示
+本仓库实现了BGR/yuv420sp_nv12图像的(等比例)缩放功能，如下所示
 
 - 缩放前
 

@@ -5,11 +5,30 @@
 #include "common/utils/file_process.hpp"
 #include "dvpp_resize.h"
 
+cv::Mat BGR2YUV_NV12(const cv::Mat &src)
+{
+    auto src_h = src.rows;
+    auto src_w = src.cols;
+    cv::Mat dst(src_h * 1.5, src_w, CV_8UC1);
+    cv::cvtColor(src, dst, cv::COLOR_BGR2YUV_I420);  // I420: YYYY...UU...VV...
+
+    auto n_y = src_h * src_w;
+    auto n_uv = n_y / 2;
+    auto n_u = n_y / 4;
+    std::vector<uint8_t> uv(n_uv);
+    std::copy(dst.data+n_y, dst.data+n_y+n_uv, uv.data());
+    for (auto i = 0; i < n_u; i++) {
+        dst.data[n_y + 2*i] = uv[i];            // U
+        dst.data[n_y + 2*i + 1] = uv[n_u + i];  // V
+    }
+    return dst;
+}
+
 int main(int argc, const char *argv[])
 {
-    if (argc != 6)
+    if (argc != 8)
     {
-        std::cout << "Usage: ./main img_list_file batch_size des_width des_height num_loop" << std::endl;
+        std::cout << "Usage: ./main img_list_file batch_size des_width des_height num_loop yuv420sp_nv12_resize fix_scale" << std::endl;
         return -1;
     }
     int32_t deviceId;
@@ -64,8 +83,12 @@ int main(int argc, const char *argv[])
     int des_width = std::atoi(argv[3]);
     int des_height = std::atoi(argv[4]);
 
+    int yuv420sp_nv12_resize = std::atoi(argv[6]);
+    int fix_scale = std::atoi(argv[7]);
+
     DvppResize dvppResize;
-    dvppResize.Init(stream, batch_size, des_width, des_height);
+    dvppResize.Init(stream, 1 == yuv420sp_nv12_resize ? 1 : 13, fix_scale,
+                    batch_size, des_width, des_height);
 
     std::vector<void*> src_buffers(batch_size);
     std::vector<ImageData> src_imgs(batch_size);
@@ -73,18 +96,36 @@ int main(int argc, const char *argv[])
 
     for (int idx = 0; idx < batch_size; ++idx)
     {
-        cv::Mat img = cv::imread(img_list[idx], 1);
         // if the input yuv is from JPEGD, 128*16 alignment on 310, 64*16 alignment on 310P
         // if the input yuv is from VDEC, it shoud be aligned to 16*2
         // alloc device memory && copy data from host to device
-        src_imgs[idx].width = img.cols; // 1920
-        src_imgs[idx].height = img.rows; // 1080
-//    src_img.alignWidth = ALIGN_UP128(img.cols); // 1920
-//    src_img.alignHeight = ALIGN_UP16(img.rows); // 1088
-        src_imgs[idx].alignWidth = ALIGN_UP16(img.cols) * 3; // 1920
-        src_imgs[idx].alignHeight = ALIGN_UP2(img.rows); // 1080
-        src_imgs[idx].size = src_imgs[idx].alignWidth * src_imgs[idx].alignHeight;//YUV420SP_SIZE(src_img.alignWidth, src_img.alignHeight);
-        size_t src_img_byte_size = img.cols * img.rows * 3;
+        cv::Mat img = cv::imread(img_list[idx], cv::IMREAD_COLOR);
+        cv::Mat img_new;
+        if(0 == yuv420sp_nv12_resize)
+        {
+            std::cout << img.cols << " " << img.rows << std::endl;
+            img_new = img.clone();
+            src_imgs[idx].width = img_new.cols; // 1920
+            src_imgs[idx].height = img_new.rows; // 1080
+//            src_img.alignWidth = ALIGN_UP128(img.cols); // 1920
+//            src_img.alignHeight = ALIGN_UP16(img.rows); // 1088
+            src_imgs[idx].alignWidth = ALIGN_UP16(src_imgs[idx].width) * 3; // 1920
+            src_imgs[idx].alignHeight = ALIGN_UP2(src_imgs[idx].height); // 1080
+            src_imgs[idx].size = src_imgs[idx].alignWidth * src_imgs[idx].alignHeight;
+        }
+        else
+        {
+            std::cout << img.cols << " " << img.rows << std::endl;
+            img_new = BGR2YUV_NV12(img);
+            src_imgs[idx].width = img_new.cols; // 1920
+            src_imgs[idx].height = img_new.rows / 1.5; // 1080
+//            src_img.alignWidth = ALIGN_UP128(img.cols); // 1920
+//            src_img.alignHeight = ALIGN_UP16(img.rows); // 1088
+            src_imgs[idx].alignWidth = ALIGN_UP16(src_imgs[idx].width); // 1920
+            src_imgs[idx].alignHeight = ALIGN_UP2(src_imgs[idx].height); // 1080
+            std::cout << src_imgs[idx].width << " " << src_imgs[idx].height << " " << src_imgs[idx].alignWidth << " " << src_imgs[idx].alignHeight << std::endl;
+            src_imgs[idx].size = YUV420SP_SIZE(src_imgs[idx].alignWidth, src_imgs[idx].alignHeight);
+        }
 
         aclError aclRet = acldvppMalloc(&src_buffers[idx], src_imgs[idx].size);
         if (aclRet != ACL_SUCCESS)
@@ -93,7 +134,7 @@ int main(int argc, const char *argv[])
             return -1;
         }
 
-        aclRet = aclrtMemcpy(src_buffers[idx], src_imgs[idx].size, img.data, src_img_byte_size, ACL_MEMCPY_HOST_TO_DEVICE);
+        aclRet = aclrtMemcpy(src_buffers[idx], src_imgs[idx].size, img_new.data, src_imgs[idx].size, ACL_MEMCPY_HOST_TO_DEVICE);
         if (aclRet != ACL_SUCCESS)
         {
             std::printf("Copy data to device failed, aclRet is %d\n", aclRet);

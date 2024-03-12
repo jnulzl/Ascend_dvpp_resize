@@ -27,8 +27,8 @@ DvppResize::DvppResize()
 
 }
 
-void DvppResize::Init(aclrtStream &stream, uint32_t batch_size,
-                      uint32_t resized_width, uint32_t resized_height)
+void DvppResize::Init(aclrtStream &stream, uint32_t input_format, uint32_t fix_scale_resize,
+                      uint32_t batch_size, uint32_t resized_width, uint32_t resized_height)
 {
     g_dvppChannelDesc_ = acldvppCreateChannelDesc();
     if (!g_dvppChannelDesc_)
@@ -61,7 +61,11 @@ void DvppResize::Init(aclrtStream &stream, uint32_t batch_size,
     g_resizeWidth_ = resized_width;
     g_resizeHeight_ = resized_height;
 
-    g_format_ = static_cast<acldvppPixelFormat>(PIXEL_FORMAT_BGR_888);
+    // PIXEL_FORMAT_BGR_888 : 13, PIXEL_FORMAT_YUV_SEMIPLANAR_420 : 1
+    // g_format_ = static_cast<acldvppPixelFormat>(PIXEL_FORMAT_BGR_888);
+    g_format_ = static_cast<acldvppPixelFormat>(input_format);
+
+    g_resize_fix_scale_ = fix_scale_resize;
 
     g_batch_size_ = batch_size;
     g_vpcBatchInputDesc_ = acldvppCreateBatchPicDesc(g_batch_size_);
@@ -149,9 +153,21 @@ int DvppResize::InitResizeInputDesc(ImageData &inputImage, int index)
     // if the input yuv is from VDEC, it shoud be aligned to 16*2
 //    uint32_t alignWidth = ALIGN_UP128(inputImage.width);
 //    uint32_t alignHeight = ALIGN_UP16(inputImage.height);
-    uint32_t alignWidthStride = ALIGN_UP16(inputImage.width) * 3;
-    uint32_t alignHeightStride = ALIGN_UP2(inputImage.height);
-    uint32_t inputBufferSize = alignWidthStride * alignHeightStride;//YUV420SP_SIZE(alignWidth, alignHeight);
+    uint32_t alignWidthStride;
+    uint32_t alignHeightStride;
+    uint32_t inputBufferSize;
+    if(PIXEL_FORMAT_BGR_888 == g_format_)
+    {
+        alignWidthStride = ALIGN_UP16(inputImage.width) * 3;
+        alignHeightStride = ALIGN_UP2(inputImage.height);
+        inputBufferSize = alignWidthStride * alignHeightStride;//YUV420SP_SIZE(alignWidth, alignHeight);
+    }
+    else
+    {
+        alignWidthStride = ALIGN_UP16(inputImage.width);
+        alignHeightStride = ALIGN_UP2(inputImage.height);
+        inputBufferSize = YUV420SP_SIZE(alignWidthStride, alignHeightStride);
+    }
 
     uint32_t inputWidth = inputImage.width;
     uint32_t inputHeight = inputImage.height;
@@ -202,7 +218,7 @@ int DvppResize::InitResizeOutputDesc()
     {
         acldvppPicDesc *vpcOutputDesc = acldvppGetPicDesc(g_vpcBatchOutputDesc_, bs);
         acldvppSetPicDescData(vpcOutputDesc, reinterpret_cast<uint8_t*>(g_vpcBatchOutBufferDev_) + bs * g_vpcOutBufferSize_);
-        acldvppSetPicDescFormat(vpcOutputDesc, g_format_);
+        acldvppSetPicDescFormat(vpcOutputDesc, PIXEL_FORMAT_BGR_888);
         acldvppSetPicDescWidth(vpcOutputDesc, resizeOutWidth);
         acldvppSetPicDescHeight(vpcOutputDesc, resizeOutHeight);
         acldvppSetPicDescWidthStride(vpcOutputDesc, resizeOutWidthStride);
@@ -253,21 +269,28 @@ int DvppResize::Process(ImageData* srcImage, int img_num)
             }
 
             // left offset must aligned to 16
-            int x;
-            x = 0;
+            int x = 0;
             // x = (g_resizeWidth_ - net_input_new_width) / 2; // 左右对称补0
             x = x < 0 ? 0 : x;
             x = ALIGN_UP16(x);
-            int x_max = x + net_input_new_width;
-            x_max = x_max >  g_resizeWidth_ ? g_resizeWidth_ - 1 : x_max;
+            int x_max = g_resizeWidth_ - 1;
+            if(0 != g_resize_fix_scale_)
+            {
+                x_max = x + net_input_new_width;
+                x_max = x_max >  g_resizeWidth_ ? g_resizeWidth_ - 1 : x_max;
+            }
             x_max = x_max % 2 ? x_max : x_max - 1;
 
-            int y;
-            y = 0;
+            int y = 0;
             // y = (g_resizeHeight_ - net_input_new_height) / 2; //上下对称补0
             y = y % 2 ? y - 1 : y - 2;
             y = y < 0 ? 0 : y;
-            int y_max = y + net_input_new_height;
+            int y_max = g_resizeHeight_ - 1;
+            if(0 != g_resize_fix_scale_)
+            {
+                y_max = y + net_input_new_height;
+                y_max = y_max >  g_resizeHeight_ ? g_resizeHeight_ - 1 : y_max;
+            }
             y_max = y_max % 2 ? y_max : y_max - 1;
             g_pasteArea_[idx] = acldvppCreateRoiConfig(x, x_max,
                                                        y, y_max);

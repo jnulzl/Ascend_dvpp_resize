@@ -48,7 +48,8 @@ public:
     */
     DvppResize();
 
-    void Init(aclrtStream &stream, uint32_t batch_size, uint32_t resized_width, uint32_t resized_height);
+    void Init(aclrtStream &stream, uint32_t input_format, uint32_t fix_scale_resize,
+              uint32_t batch_size, uint32_t resized_width, uint32_t resized_height);
 
     /**
     * @brief Destructor
@@ -89,6 +90,7 @@ private:
     uint32_t g_resizeWidth_;
     uint32_t g_resizeHeight_;
     acldvppPixelFormat g_format_;
+    int g_resize_fix_scale_;
 
     int  g_batch_size_;
     std::vector<uint32_t> g_roiNums_;
