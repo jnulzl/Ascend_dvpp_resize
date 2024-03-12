@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(DVPP_Resize_V2)
+project(DVPP_Resize_V1)
 
 set(CMAKE_CXX_STANDARD 14)
 

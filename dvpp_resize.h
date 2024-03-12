@@ -31,7 +31,7 @@
 #define ALIGN_UP64(num) ALIGN_UP(num, 64)
 #define ALIGN_UP128(num) ALIGN_UP(num, 128)
 
-struct ImageData {
+struct DVPPImageData {
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t alignWidth = 0;
@@ -60,16 +60,21 @@ public:
     * @brief dvpp process
     * @return result
     */
-    int Process(ImageData* srcImage, int img_num);
+    int Process(DVPPImageData* srcImage, int img_num);
 
-    int Get(ImageData& resizedImage, int index) const;
+    int Get(DVPPImageData& resizedImage, int index) const;
+
+    inline bool HasInit() const
+    {
+        return has_init_over_;
+    }
 
     const uint8_t* GetOutputDevicePtr() const;
 
     void DestroyResource();
 
 private:
-    int InitResizeInputDesc(ImageData& inputImage, int index);
+    int InitResizeInputDesc(DVPPImageData& inputImage, int index);
 
     int InitResizeOutputDesc();
 
@@ -91,6 +96,7 @@ private:
     uint32_t g_resizeHeight_;
     acldvppPixelFormat g_format_;
     int g_resize_fix_scale_;
+    bool has_init_over_;
 
     int  g_batch_size_;
     std::vector<uint32_t> g_roiNums_;

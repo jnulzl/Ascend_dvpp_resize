@@ -87,11 +87,14 @@ int main(int argc, const char *argv[])
     int fix_scale = std::atoi(argv[7]);
 
     DvppResize dvppResize;
-    dvppResize.Init(stream, 1 == yuv420sp_nv12_resize ? 1 : 13, fix_scale,
-                    batch_size, des_width, des_height);
+    if(!dvppResize.HasInit())
+    {
+        dvppResize.Init(stream, 1 == yuv420sp_nv12_resize ? 1 : 13, fix_scale,
+                        batch_size, des_width, des_height);
+    }
 
     std::vector<void*> src_buffers(batch_size);
-    std::vector<ImageData> src_imgs(batch_size);
+    std::vector<DVPPImageData> src_imgs(batch_size);
     uint32_t num_loop = std::atoi(argv[5]);
 
     for (int idx = 0; idx < batch_size; ++idx)
@@ -155,7 +158,7 @@ int main(int argc, const char *argv[])
 
     for (int idx = 0; idx < batch_size; ++idx)
     {
-        ImageData des_img;
+        DVPPImageData des_img;
         dvppResize.Get(des_img, idx);
 
         // alloc device memory && copy data from device to host
@@ -180,7 +183,10 @@ int main(int argc, const char *argv[])
         }
     }
 
-    dvppResize.DestroyResource();
+    if(dvppResize.HasInit())
+    {
+        dvppResize.DestroyResource();
+    }
 
     if (stream)
     {

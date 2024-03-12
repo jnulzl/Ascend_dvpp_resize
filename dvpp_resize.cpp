@@ -22,7 +22,7 @@
 DvppResize::DvppResize()
         : stream_(nullptr), g_dvppChannelDesc_(nullptr),
           g_resizeConfig_(nullptr), g_vpcBatchInputDesc_(nullptr), g_vpcBatchOutputDesc_(nullptr),
-          g_vpcOutBufferSize_(0)
+          g_vpcOutBufferSize_(0), has_init_over_(false)
 {
 
 }
@@ -87,6 +87,7 @@ void DvppResize::Init(aclrtStream &stream, uint32_t input_format, uint32_t fix_s
     g_roiNums_.resize(g_batch_size_, 1);
     g_cropArea_.resize(g_batch_size_, nullptr);
     g_pasteArea_.resize(g_batch_size_,nullptr);
+    has_init_over_ = true;
     AIALG_PRINT("Init success\n");
 }
 
@@ -147,7 +148,7 @@ void DvppResize::DestroyResource()
     }
 }
 
-int DvppResize::InitResizeInputDesc(ImageData &inputImage, int index)
+int DvppResize::InitResizeInputDesc(DVPPImageData &inputImage, int index)
 {
     // if the input yuv is from JPEGD, 128*16 alignment on 310, 64*16 alignment on 310P
     // if the input yuv is from VDEC, it shoud be aligned to 16*2
@@ -228,7 +229,7 @@ int DvppResize::InitResizeOutputDesc()
     return 1;
 }
 
-int DvppResize::Process(ImageData* srcImage, int img_num)
+int DvppResize::Process(DVPPImageData* srcImage, int img_num)
 {
     if(img_num != g_batch_size_)
     {
@@ -302,9 +303,9 @@ int DvppResize::Process(ImageData* srcImage, int img_num)
         }
     }
     aclError aclRet = acldvppVpcBatchCropResizePasteAsync(g_dvppChannelDesc_, g_vpcBatchInputDesc_,
-                                                     g_roiNums_.data(), g_batch_size_,
-                                                     g_vpcBatchOutputDesc_, g_cropArea_.data(), g_pasteArea_.data(),
-                                                     g_resizeConfig_, stream_);
+                                                          g_roiNums_.data(), g_batch_size_,
+                                                          g_vpcBatchOutputDesc_, g_cropArea_.data(), g_pasteArea_.data(),
+                                                          g_resizeConfig_, stream_);
     if (aclRet != ACL_SUCCESS)
     {
         AIALG_ERROR("acldvppVpcResizeAsync failed, aclRet = %d\n", aclRet);
@@ -320,7 +321,7 @@ int DvppResize::Process(ImageData* srcImage, int img_num)
     return 1;
 }
 
-int DvppResize::Get(ImageData &resizedImage, int index) const
+int DvppResize::Get(DVPPImageData &resizedImage, int index) const
 {
     resizedImage.width = g_resizeWidth_;
     resizedImage.height = g_resizeHeight_;
