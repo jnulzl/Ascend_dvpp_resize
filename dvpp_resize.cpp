@@ -148,7 +148,7 @@ void DvppResize::DestroyResource()
     }
 }
 
-int DvppResize::InitResizeInputDesc(DVPPImageData &inputImage, int index)
+int DvppResize::InitResizeInputDesc(const DVPPImageData &inputImage, int index)
 {
     // if the input yuv is from JPEGD, 128*16 alignment on 310, 64*16 alignment on 310P
     // if the input yuv is from VDEC, it shoud be aligned to 16*2
@@ -229,12 +229,13 @@ int DvppResize::InitResizeOutputDesc()
     return 1;
 }
 
-int DvppResize::Process(DVPPImageData* srcImage, int img_num)
+
+void DvppResize::ProcessFullImage(const DVPPImageData* srcImage, int img_num)
 {
     if(img_num != g_batch_size_)
     {
-        AIALG_ERROR("img_num must equal batch_size, img_num = %d, img_num = %d\n", img_num, g_batch_size_);
-        return 0;
+        AIALG_ERROR("img_num must equal batch_size, img_num = %d, batch_size = %d\n", img_num, g_batch_size_);
+        return;
     }
 
     for (int idx = 0; idx < g_batch_size_; ++idx)
@@ -256,7 +257,7 @@ int DvppResize::Process(DVPPImageData* srcImage, int img_num)
             if (!g_cropArea_[idx])
             {
                 AIALG_ERROR("acldvppCreateRoiConfig cropArea_ failed");
-                return 0;
+                return;
             }
             InitResizeInputDesc(srcImage[idx], idx);
 
@@ -298,10 +299,108 @@ int DvppResize::Process(DVPPImageData* srcImage, int img_num)
             if (!g_pasteArea_[idx])
             {
                 AIALG_ERROR("acldvppCreateRoiConfig g_pasteArea_ failed");
-                return 0;
+                return;
             }
         }
     }
+    return;
+}
+
+
+void DvppResize::ProcessSubImage(const DVPPImageData *srcImage, const RectInt *rois, int img_num)
+{
+    if(img_num != g_batch_size_)
+    {
+        AIALG_ERROR("img_num must equal batch_size, img_num = %d, batch_size = %d\n", img_num, g_batch_size_);
+        return;
+    }
+
+    for (int idx = 0; idx < g_batch_size_; ++idx)
+    {
+        acldvppPicDesc *vpcInputDesc = acldvppGetPicDesc(g_vpcBatchInputDesc_, idx);
+        acldvppSetPicDescData(vpcInputDesc, srcImage[idx].data);
+
+        if (!g_cropArea_.empty() && g_cropArea_[idx])
+        {
+            acldvppDestroyRoiConfig(g_cropArea_[idx]);
+            g_cropArea_[idx] = nullptr;
+        }
+
+        uint32_t left = rois[idx].xmin % 2 ? rois[idx].xmin - 1 : rois[idx].xmin;
+        left = left > 0 ? left : 0;
+        uint32_t right = rois[idx].xmax % 2 ? rois[idx].xmax : rois[idx].xmax - 1;
+        right = right > 0 ? right : 0;
+
+        uint32_t top = rois[idx].ymin % 2 ? rois[idx].ymin - 1 : rois[idx].ymin;
+        top = top > 0 ? top : 0;
+        uint32_t bottom = rois[idx].ymax % 2 ? rois[idx].ymax : rois[idx].ymax - 1;
+        bottom = bottom > 0 ? bottom : 0;
+
+        g_cropArea_[idx] = acldvppCreateRoiConfig(left, right, top, bottom);
+        if (!g_cropArea_[idx])
+        {
+            AIALG_ERROR("acldvppCreateRoiConfig cropArea_ failed");
+            return;
+        }
+        InitResizeInputDesc(srcImage[idx], idx);
+
+        int src_roi_width = rois[idx].xmax - rois[idx].xmin + 1;
+        int src_roi_height = rois[idx].ymax - rois[idx].ymin + 1;
+        float r = 1.0f * std::max(g_resizeHeight_, g_resizeWidth_) / std::max(src_roi_width, src_roi_height);
+        int net_input_new_width = static_cast<int>(src_roi_width * r);
+        int net_input_new_height = static_cast<int>(src_roi_height * r);
+        if (!g_pasteArea_.empty() && g_pasteArea_[idx])
+        {
+            acldvppDestroyRoiConfig(g_pasteArea_[idx]);
+            g_pasteArea_[idx] = nullptr;
+        }
+
+        // left offset must aligned to 16
+        int x = 0;
+        // x = (g_resizeWidth_ - net_input_new_width) / 2; // 左右对称补0
+        x = x < 0 ? 0 : x;
+        x = ALIGN_UP16(x);
+        int x_max = g_resizeWidth_ - 1;
+        if(0 != g_resize_fix_scale_)
+        {
+            x_max = x + net_input_new_width;
+            x_max = x_max >  g_resizeWidth_ ? g_resizeWidth_ - 1 : x_max;
+        }
+        x_max = x_max % 2 ? x_max : x_max - 1;
+
+        int y = 0;
+        // y = (g_resizeHeight_ - net_input_new_height) / 2; //上下对称补0
+        y = y % 2 ? y - 1 : y - 2;
+        y = y < 0 ? 0 : y;
+        int y_max = g_resizeHeight_ - 1;
+        if(0 != g_resize_fix_scale_)
+        {
+            y_max = y + net_input_new_height;
+            y_max = y_max >  g_resizeHeight_ ? g_resizeHeight_ - 1 : y_max;
+        }
+        y_max = y_max % 2 ? y_max : y_max - 1;
+        g_pasteArea_[idx] = acldvppCreateRoiConfig(x, x_max,
+                                                   y, y_max);
+        if (!g_pasteArea_[idx])
+        {
+            AIALG_ERROR("acldvppCreateRoiConfig g_pasteArea_ failed");
+            return;
+        }
+    }
+    return;
+}
+
+int DvppResize::Process(const DVPPImageData* srcImage, const  RectInt* rois, int img_num)
+{
+    if(!rois)
+    {
+        ProcessFullImage(srcImage, img_num);
+    }
+    else
+    {
+        ProcessSubImage(srcImage, rois, img_num);
+    }
+
     aclError aclRet = acldvppVpcBatchCropResizePasteAsync(g_dvppChannelDesc_, g_vpcBatchInputDesc_,
                                                           g_roiNums_.data(), g_batch_size_,
                                                           g_vpcBatchOutputDesc_, g_cropArea_.data(), g_pasteArea_.data(),

@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <random>
 #include "opencv2/opencv.hpp"
 
 #include "common/utils/file_process.hpp"
@@ -24,11 +25,19 @@ cv::Mat BGR2YUV_NV12(const cv::Mat &src)
     return dst;
 }
 
+int get_random(int min, int max)
+{
+    std::random_device seed;//硬件生成随机数种子
+    std::ranlux48 engine(seed());//利用种子生成随机数引擎
+    std::uniform_int_distribution<> distrib(min, max);//设置随机数范围，并为均匀分布
+    return distrib(engine);//随机数
+}
+
 int main(int argc, const char *argv[])
 {
-    if (argc != 8)
+    if (argc != 9)
     {
-        std::cout << "Usage: ./main img_list_file batch_size des_width des_height num_loop yuv420sp_nv12_resize fix_scale" << std::endl;
+        std::cout << "Usage: ./main img_list_file batch_size des_width des_height num_loop yuv420sp_nv12_resize fix_scale crop_size" << std::endl;
         return -1;
     }
     int32_t deviceId;
@@ -85,6 +94,7 @@ int main(int argc, const char *argv[])
 
     int yuv420sp_nv12_resize = std::atoi(argv[6]);
     int fix_scale = std::atoi(argv[7]);
+    int crop_size = std::atoi(argv[8]);
 
     DvppResize dvppResize;
     if(!dvppResize.HasInit())
@@ -96,6 +106,8 @@ int main(int argc, const char *argv[])
     std::vector<void*> src_buffers(batch_size);
     std::vector<DVPPImageData> src_imgs(batch_size);
     uint32_t num_loop = std::atoi(argv[5]);
+    std::vector<RectInt> rects;
+    rects.resize(batch_size);
 
     for (int idx = 0; idx < batch_size; ++idx)
     {
@@ -129,6 +141,10 @@ int main(int argc, const char *argv[])
             std::cout << src_imgs[idx].width << " " << src_imgs[idx].height << " " << src_imgs[idx].alignWidth << " " << src_imgs[idx].alignHeight << std::endl;
             src_imgs[idx].size = YUV420SP_SIZE(src_imgs[idx].alignWidth, src_imgs[idx].alignHeight);
         }
+        rects[idx].xmin = get_random(200, 900);
+        rects[idx].xmax = rects[idx].xmin + crop_size;
+        rects[idx].ymin = get_random(400, 600);
+        rects[idx].ymax = rects[idx].ymin + crop_size;
 
         aclError aclRet = acldvppMalloc(&src_buffers[idx], src_imgs[idx].size);
         if (aclRet != ACL_SUCCESS)
@@ -150,7 +166,7 @@ int main(int argc, const char *argv[])
     std::chrono::time_point<std::chrono::system_clock> startTP = std::chrono::system_clock::now();
     for (int idx = 0; idx < num_loop; ++idx)
     {
-        dvppResize.Process(src_imgs.data(), src_imgs.size());
+        dvppResize.Process(src_imgs.data(), rects.data(), src_imgs.size());
     }
     std::chrono::time_point<std::chrono::system_clock> finishTP1 = std::chrono::system_clock::now();
     std::printf("Dvpp %d resize time = %ld us\n", num_loop, std::chrono::duration_cast<std::chrono::microseconds>(finishTP1 - startTP).count());

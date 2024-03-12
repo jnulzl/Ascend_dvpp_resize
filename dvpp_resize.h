@@ -21,6 +21,7 @@
 #include <cstdint>
 #include "acl/acl.h"
 #include "acl/ops/acl_dvpp.h"
+#include "data_type.h"
 
 #define RGBU8_IMAGE_SIZE(width, height) ((width) * (height) * 3)
 #define YUV420SP_SIZE(width, height) ((width) * (height) * 3 / 2)
@@ -60,7 +61,7 @@ public:
     * @brief dvpp process
     * @return result
     */
-    int Process(DVPPImageData* srcImage, int img_num);
+    int Process(const DVPPImageData* srcImage, const  RectInt* rois, int img_num);
 
     int Get(DVPPImageData& resizedImage, int index) const;
 
@@ -74,9 +75,13 @@ public:
     void DestroyResource();
 
 private:
-    int InitResizeInputDesc(DVPPImageData& inputImage, int index);
+    int InitResizeInputDesc(const DVPPImageData& inputImage, int index);
 
     int InitResizeOutputDesc();
+
+    void ProcessFullImage(const DVPPImageData* srcImage, int img_num);
+
+    void ProcessSubImage(const DVPPImageData* srcImage, const RectInt* rois, int img_num);
 
 private:
     std::vector<uint32_t> src_widths_;
