@@ -114,7 +114,11 @@ int main(int argc, const char *argv[])
         // if the input yuv is from JPEGD, 128*16 alignment on 310, 64*16 alignment on 310P
         // if the input yuv is from VDEC, it shoud be aligned to 16*2
         // alloc device memory && copy data from host to device
-        cv::Mat img = cv::imread(img_list[idx], cv::IMREAD_COLOR);
+        cv::Mat tmp = cv::imread(img_list[idx], cv::IMREAD_COLOR);
+        int img_height = tmp.rows;
+        int img_width = tmp.cols;
+        cv::Mat img;
+        cv::resize(tmp, img, {ALIGN_UP16(img_width),ALIGN_UP2(img_height)});
         cv::Mat img_new;
         if(0 == yuv420sp_nv12_resize)
         {
@@ -141,10 +145,20 @@ int main(int argc, const char *argv[])
             std::cout << src_imgs[idx].width << " " << src_imgs[idx].height << " " << src_imgs[idx].alignWidth << " " << src_imgs[idx].alignHeight << std::endl;
             src_imgs[idx].size = YUV420SP_SIZE(src_imgs[idx].alignWidth, src_imgs[idx].alignHeight);
         }
-        rects[idx].xmin = get_random(200, 900);
-        rects[idx].xmax = rects[idx].xmin + crop_size;
-        rects[idx].ymin = get_random(400, 600);
-        rects[idx].ymax = rects[idx].ymin + crop_size;
+        if(crop_size <= 0)
+        {
+            rects[idx].xmin = 0;
+            rects[idx].xmax = src_imgs[idx].width - 1;
+            rects[idx].ymin = 0;
+            rects[idx].ymax = src_imgs[idx].height - 1;
+        }
+        else
+        {
+            rects[idx].xmin = get_random(200, 900);
+            rects[idx].xmax = rects[idx].xmin + crop_size;
+            rects[idx].ymin = get_random(400, 600);
+            rects[idx].ymax = rects[idx].ymin + crop_size;
+        }
 
         aclError aclRet = acldvppMalloc(&src_buffers[idx], src_imgs[idx].size);
         if (aclRet != ACL_SUCCESS)
