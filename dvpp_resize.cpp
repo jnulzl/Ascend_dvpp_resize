@@ -31,6 +31,12 @@ void DvppResize::Init(const DVPPResizeInitConfig* dvppResizeInitConfig)
 {
     dvppResizeInitConfig_ = *dvppResizeInitConfig;
 
+    aclError ret = aclrtSetCurrentContext(dvppResizeInitConfig_.context);
+    if (ret != ACL_SUCCESS)
+    {
+        AIALG_ERROR("set current context failed, aclRet is %d\n", ret);
+        return;
+    }
     g_dvppChannelDesc_ = acldvppCreateChannelDesc();
     if (!g_dvppChannelDesc_)
     {
@@ -130,6 +136,12 @@ void DvppResize::DestroyResource()
     }
     if (g_dvppChannelDesc_)
     {
+        aclError ret = aclrtSetCurrentContext(dvppResizeInitConfig_.context);
+        if (ret != ACL_SUCCESS)
+        {
+            AIALG_ERROR("set current context failed, aclRet is %d\n", ret);
+            return;
+        }
         aclError aclRet = acldvppDestroyChannel(g_dvppChannelDesc_);
         if (aclRet != ACL_SUCCESS)
         {
