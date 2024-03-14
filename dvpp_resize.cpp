@@ -271,6 +271,7 @@ void DvppResize::ProcessFullImage(const DVPPImageData* srcImage, int img_num)
             InitResizeInputDesc(srcImage[idx], idx);
 
             float r = 1.0f * std::max(dvppResizeInitConfig_.resized_height, dvppResizeInitConfig_.resized_width) / std::max(src_heights_[idx], src_widths_[idx]);
+            r /= dvppResizeInitConfig_.resize_scale_factor;
             int net_input_new_width = static_cast<int>(src_widths_[idx] * r);
             int net_input_new_height = static_cast<int>(src_heights_[idx] * r);
             if (!g_pasteArea_.empty() && g_pasteArea_[idx])
@@ -281,7 +282,7 @@ void DvppResize::ProcessFullImage(const DVPPImageData* srcImage, int img_num)
 
             // left offset must aligned to 16
             int x = 0;
-            if(0 != dvppResizeInitConfig_.is_symmetry_padding)
+            if(0 != dvppResizeInitConfig_.is_fix_scale_resize && 0 != dvppResizeInitConfig_.is_symmetry_padding)
             {
                 x = (dvppResizeInitConfig_.resized_width - net_input_new_width) / 2; // 左右对称补0
             }
@@ -296,7 +297,7 @@ void DvppResize::ProcessFullImage(const DVPPImageData* srcImage, int img_num)
             x_max = x_max % 2 ? x_max : x_max - 1;
 
             int y = 0;
-            if(0 != dvppResizeInitConfig_.is_symmetry_padding)
+            if(0 != dvppResizeInitConfig_.is_fix_scale_resize && 0 != dvppResizeInitConfig_.is_symmetry_padding)
             {
                 y = (dvppResizeInitConfig_.resized_height - net_input_new_height) / 2; //上下对称补0
             }
@@ -373,7 +374,7 @@ void DvppResize::ProcessSubImage(const DVPPImageData *srcImage, const RectInt *r
 
         // left offset must aligned to 16
         int x = 0;
-        if(0 != dvppResizeInitConfig_.is_symmetry_padding)
+        if(0 != dvppResizeInitConfig_.is_fix_scale_resize && 0 != dvppResizeInitConfig_.is_symmetry_padding)
         {
             x = (dvppResizeInitConfig_.resized_width - net_input_new_width) / 2; // 左右对称补0
         }
@@ -388,7 +389,7 @@ void DvppResize::ProcessSubImage(const DVPPImageData *srcImage, const RectInt *r
         x_max = x_max % 2 ? x_max : x_max - 1;
 
         int y = 0;
-        if(0 != dvppResizeInitConfig_.is_symmetry_padding)
+        if(0 != dvppResizeInitConfig_.is_fix_scale_resize && 0 != dvppResizeInitConfig_.is_symmetry_padding)
         {
             y = (dvppResizeInitConfig_.resized_height - net_input_new_height) / 2; //上下对称补0
         }
