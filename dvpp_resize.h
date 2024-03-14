@@ -32,14 +32,27 @@
 #define ALIGN_UP64(num) ALIGN_UP(num, 64)
 #define ALIGN_UP128(num) ALIGN_UP(num, 128)
 
-struct DVPPImageData {
+typedef struct{
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t alignWidth = 0;
     uint32_t alignHeight = 0;
     uint32_t size = 0;
     uint8_t* data;
-};
+} DVPPImageData ;
+
+typedef struct{
+    aclrtContext context;
+    aclrtStream stream;
+    uint32_t input_format;
+    uint32_t batch_size;
+    uint32_t resized_width;
+    uint32_t resized_height;
+    uint32_t is_fix_scale_resize = 1;  //yolov6 && rtmpose: 1
+    uint32_t is_symmetry_padding = 1;  //rtmpose: 1
+    float resize_scale_factor = 1.0f; //rtmpose: 1.25f
+    char reserve[8];
+}DVPPResizeInitConfig;
 
 class DvppResize {
 public:
@@ -49,8 +62,7 @@ public:
     */
     DvppResize();
 
-    void Init(aclrtStream &stream, uint32_t input_format, uint32_t fix_scale_resize,
-              uint32_t batch_size, uint32_t resized_width, uint32_t resized_height);
+    void Init(const DVPPResizeInitConfig* dvppResizeInitConfig);
 
     /**
     * @brief Destructor
@@ -64,6 +76,8 @@ public:
     int Process(const DVPPImageData* srcImage, const  RectInt* rois, int img_num);
 
     int Get(DVPPImageData& resizedImage, int index) const;
+
+    int GetHostData(DVPPImageData& resizedImage, int index);
 
     inline bool HasInit() const
     {
@@ -84,10 +98,11 @@ private:
     void ProcessSubImage(const DVPPImageData* srcImage, const RectInt* rois, int img_num);
 
 private:
+    DVPPResizeInitConfig dvppResizeInitConfig_;
+
     std::vector<uint32_t> src_widths_;
     std::vector<uint32_t> src_heights_;
 
-    aclrtStream stream_;
     acldvppChannelDesc *g_dvppChannelDesc_;
     acldvppResizeConfig *g_resizeConfig_;
 
@@ -97,16 +112,15 @@ private:
     void* g_vpcBatchOutBufferDev_;  // input pic dev buffer
     uint32_t g_vpcOutBufferSize_;  // vpc output size
 
-    uint32_t g_resizeWidth_;
-    uint32_t g_resizeHeight_;
     acldvppPixelFormat g_format_;
-    int g_resize_fix_scale_;
     bool has_init_over_;
 
-    int  g_batch_size_;
     std::vector<uint32_t> g_roiNums_;
     std::vector<acldvppRoiConfig*> g_cropArea_;
     std::vector<acldvppRoiConfig*> g_pasteArea_;
+
+    // copy data from device to host
+    std::vector<uint8_t> out_host_data_;
 };
 
 #endif // _PICTURE_INC_DVPP_RESIZE_H

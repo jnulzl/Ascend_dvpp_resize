@@ -99,8 +99,17 @@ int main(int argc, const char *argv[])
     DvppResize dvppResize;
     if(!dvppResize.HasInit())
     {
-        dvppResize.Init(stream, 1 == yuv420sp_nv12_resize ? 1 : 13, fix_scale,
-                        batch_size, des_width, des_height);
+        DVPPResizeInitConfig dvppResizeInitConfig;
+        dvppResizeInitConfig.context = context;
+        dvppResizeInitConfig.stream = stream;
+        dvppResizeInitConfig.input_format = 1 == yuv420sp_nv12_resize ? 1 : 13;
+        dvppResizeInitConfig.batch_size = batch_size;
+        dvppResizeInitConfig.resized_width = des_width;
+        dvppResizeInitConfig.resized_height = des_height;
+        dvppResizeInitConfig.is_fix_scale_resize = fix_scale;
+        dvppResizeInitConfig.is_symmetry_padding = 0;
+        dvppResizeInitConfig.resize_scale_factor = 1.0f;
+        dvppResize.Init(&dvppResizeInitConfig);
     }
 
     std::vector<void*> src_buffers(batch_size);
