@@ -26,7 +26,7 @@ endif()
 
 ##############Ascend##############
 if(NOT ASCEND_TOOLKIT)
-    set(ASCEND_TOOLKIT /home/jnulzl/Ascend/ascend-toolkit/6.3.RC2/aarch64-linux)
+    set(ASCEND_TOOLKIT /mnt/d/Softwares/Ascend/ascend-toolkit/7.0.0/ascend-toolkit/7.0.0/aarch64-linux)
 endif()
 
 set(ASCEND_INCLUDE ${ASCEND_TOOLKIT}/include)
