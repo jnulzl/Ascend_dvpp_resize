@@ -22,11 +22,10 @@
         },
         {
             "name": "Build_Debug_Ascend",
-            "generator": "Unix Makefiles",
-            "binaryDir": "${sourceDir}/build/${presetName}",
+            "inherits": "Build_Release_Ascend",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
             }
-        }        
+        }
     ]
 }
