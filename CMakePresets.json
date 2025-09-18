@@ -13,8 +13,6 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "YES",
-                "DEVICE_LOWER": "atlas",
-                "ENGINE_LOWER": "ascend",
                 "CMAKE_CXX_COMPILER": "/opt/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-g++-8.3.0",
                 "CMAKE_C_COMPILER": "/opt/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc-8.3.0",
                 "ASCEND_TOOLKIT": "/mnt/d/Softwares/Ascend/ascend-toolkit/7.0.0/ascend-toolkit/7.0/aarch64-linux"
